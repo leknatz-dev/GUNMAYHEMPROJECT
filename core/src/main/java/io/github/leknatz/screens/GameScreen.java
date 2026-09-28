@@ -14,6 +14,7 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import io.github.leknatz.AudioManager;
 import io.github.leknatz.animation.CharacterAnimator;
 import io.github.leknatz.config.GameConstants;
 import io.github.leknatz.entities.Bullet;
@@ -68,6 +69,9 @@ public class GameScreen extends ScreenAdapter {
     private float stateTime = 0f;
     private float matchTimer = GameConstants.DEFAULT_MATCH_TIME;
 
+    // Audio Manager Instance
+    private AudioManager audioManager;
+
     @Override
     public void show() {
         gameCamera = new OrthographicCamera();
@@ -85,6 +89,11 @@ public class GameScreen extends ScreenAdapter {
         shapeRenderer = new ShapeRenderer();
         font = new BitmapFont();
         font.getData().setScale(1.2f);
+
+        // --- Audio System Setup ---
+        audioManager = AudioManager.getInstance();
+        loadAudioAssets();
+        audioManager.playMusic("stage_theme", true);
 
         parallaxBackground = new ParallaxBackground();
         parallaxBackground.addLayer(new ParallaxLayer(new Texture("1.png"), 0.15f));
@@ -125,6 +134,19 @@ public class GameScreen extends ScreenAdapter {
         resetMatch();
     }
 
+    private void loadAudioAssets() {
+        // Load Sound Effects (ensure these exist in your assets folder)
+        audioManager.loadSound("shoot", "shoot.wav");
+        audioManager.loadSound("punch", "punch.wav");
+        audioManager.loadSound("reload", "reload.wav");
+        audioManager.loadSound("hit", "hit.wav");
+        audioManager.loadSound("jump", "jump.wav");
+        audioManager.loadSound("death", "death.wav");
+
+        // Load Background Music
+        audioManager.loadMusic("stage_theme", "stage_theme.mp3");
+    }
+
     @Override
     public void render(float delta) {
         stateTime += delta;
@@ -155,10 +177,17 @@ public class GameScreen extends ScreenAdapter {
             player2.setIgnoredPlatform(null);
         }
 
+        int p1HitCountBefore = hitMarkers.size;
         CollisionEngine.checkPunchCollision(player1, player2, animator.getPunchAnimation(), hitMarkers, hitmarkRegions);
         CollisionEngine.checkPunchCollision(player2, player1, animator.getPunchAnimation(), hitMarkers, hitmarkRegions);
 
+        int bulletsBefore = bullets.size;
         CollisionEngine.updateBulletsAndCollisions(bullets, mapManager.getPlatforms(), player1, player2, delta, hitMarkers, hitmarkRegions);
+
+        // Play hit sound effect if a punch or bullet created new hitmarkers
+        if (hitMarkers.size > p1HitCountBefore) {
+            audioManager.playSoundWithPitchVar("hit", 0.1f);
+        }
 
         for (int i = hitMarkers.size - 1; i >= 0; i--) {
             HitMarker hm = hitMarkers.get(i);
@@ -199,6 +228,7 @@ public class GameScreen extends ScreenAdapter {
         if (controller.isJumpJustPressed() && player.isGrounded()) {
             player.getVelocity().y = GameConstants.JUMP_FORCE;
             player.setGrounded(false);
+            audioManager.playSoundWithPitchVar("jump", 0.05f);
         }
 
         if (controller.isDropDownPressed() && player.isGrounded()) {
@@ -213,18 +243,23 @@ public class GameScreen extends ScreenAdapter {
 
         if (controller.isReloadJustPressed() && player.canReload()) {
             player.startReload();
+            audioManager.playSound("reload");
         }
 
         if (controller.isShootJustPressed() && player.canShoot()) {
             bullets.addAll(defaultWeapon.fire(player));
             player.decrementAmmo();
+            audioManager.playSoundWithPitchVar("shoot", 0.08f);
+
             if (player.getAmmo() == 0) {
                 player.startReload();
+                audioManager.playSound("reload");
             }
         }
 
         if (controller.isPunchJustPressed() && player.canPunch()) {
             player.startPunch();
+            audioManager.playSoundWithPitchVar("punch", 0.1f);
         }
 
         player.getVelocity().x *= GameConstants.KNOCKBACK_DAMPING;
@@ -244,6 +279,7 @@ public class GameScreen extends ScreenAdapter {
     private void checkDeathAndRespawn(Player player, Player opponent) {
         if (player.getY() < -50 || player.getHealth() <= 0) {
             opponent.incrementScore();
+            audioManager.playSound("death");
             
             // Fixed top offscreen respawn position
             float spawnX = (player.getPlayerId() == 1) ? GameConstants.VIRTUAL_WIDTH * 0.35f : GameConstants.VIRTUAL_WIDTH * 0.65f;
@@ -354,5 +390,6 @@ public class GameScreen extends ScreenAdapter {
                 t.dispose();
             }
         }
+        if (audioManager != null) audioManager.dispose();
     }
 }
